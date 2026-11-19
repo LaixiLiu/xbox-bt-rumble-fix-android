@@ -1,0 +1,6 @@
+id=xbox_bt_rumble_ff
+name=Xbox Bluetooth Rumble Fix
+version=1.2
+versionCode=3
+author=LiuXian
+description=Select a connected Bluetooth HID controller and manually enable rumble for supported Xbox controllers.

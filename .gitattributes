@@ -1,0 +1,2 @@
+# Shell scripts and module files must keep LF — CRLF breaks them on Android.
+* text=auto eol=lf
