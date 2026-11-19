@@ -1,12 +1,24 @@
 #!/system/bin/sh
+# Xbox Bluetooth Rumble Fix - Magisk Action.
+# Key-driven menu (Magisk's Action stdin is not a TTY on this device):
+#   physical Volume-Up   = move to next device
+#   physical Volume-Down = confirm selection
+# Captured key codes on this Meizu unit:
+#   physical Volume-Up   -> 0073
+#   physical Volume-Down -> 0072
 
 HID_GLOB='/sys/bus/hid/devices/0005:*'
 HID_DRIVERS='/sys/bus/hid/drivers'
 NEW_ID="$HID_DRIVERS/microsoft/new_id"
 BOOT_MARKER='/dev/xbox_bt_rumble_ff_boot_id'
 LIST="/dev/xbox_bt_rumble_ff_devices.$$"
+MENU_TIMEOUT=90
+VOL_SAVED=
 
-cleanup() { rm -f "$LIST"; }
+cleanup() {
+  rm -f "$LIST"
+  [ -n "$VOL_SAVED" ] && settings put system volume_music "$VOL_SAVED" 2>/dev/null
+}
 trap cleanup EXIT HUP INT TERM
 
 fail() {
@@ -14,8 +26,23 @@ fail() {
   exit 1
 }
 
+# Wait for one volume-key press. Prints NEXT or CHOOSE; empty on timeout.
+wait_key() {
+  line=$(timeout "$1" getevent -q 2>/dev/null | grep -m1 -E '0001 007[23] 00000001$')
+  [ -n "$line" ] || return 1
+  code=$(echo "$line" | awk '{print $3}')
+  case "$code" in
+    0073) echo NEXT ;;
+    0072) echo CHOOSE ;;
+    *) return 1 ;;
+  esac
+}
+
+VOL_SAVED=$(settings get system volume_music 2>/dev/null)
+
 : > "$LIST" || fail 'cannot create the temporary device list.'
 
+echo '=== Xbox Bluetooth Rumble Fix ==='
 echo 'Connected Bluetooth HID devices:'
 COUNT=0
 for HID_PATH in $HID_GLOB; do
@@ -51,32 +78,42 @@ done
 
 [ "$COUNT" -gt 0 ] || fail 'no Bluetooth HID devices are connected.'
 
-if [ ! -t 0 ]; then
-  fail 'interactive input is unavailable. Open this module with Magisk App > Modules > Action.'
-fi
+echo
+echo '音量+ = 下一项    音量- = 确认    (90 秒无操作自动退出)'
+echo
 
-printf 'Select a device number (or q to cancel): '
-IFS= read -r CHOICE
-case "$CHOICE" in
-  q|Q|'') echo 'Xbox Rumble: cancelled.'; exit 0 ;;
-  *[!0-9]*) fail 'please enter a listed number.' ;;
-esac
-
-ROW=$(sed -n "${CHOICE}p" "$LIST")
-[ -n "$ROW" ] || fail 'selection is outside the list.'
-OLD_IFS=$IFS
-IFS='|'
-read -r HID_ID NAME UNIQUE DRIVER SUPPORTED <<EOF
+N=$COUNT
+SEL=1
+while :; do
+  ROW=$(sed -n "${SEL}p" "$LIST")
+  OLD_IFS=$IFS
+  IFS='|'
+  read -r HID_ID NAME UNIQUE DRIVER SUPPORTED <<EOF
 $ROW
 EOF
-IFS=$OLD_IFS
+  IFS=$OLD_IFS
+
+  MARK=''
+  [ "$SUPPORTED" = yes ] && MARK='  [supported]'
+  printf '> 选择: [%d/%d] %s  %s  driver=%s%s\n' \
+    "$SEL" "$N" "$NAME" "$HID_ID" "${DRIVER:-unbound}" "$MARK"
+
+  key=$(wait_key "$MENU_TIMEOUT") || { echo; echo '未检测到按键，退出。'; exit 0; }
+  if [ "$key" = NEXT ]; then
+    SEL=$(( SEL % N + 1 ))
+    continue
+  fi
+  echo
+  break
+done
+
+HID_PATH="/sys/bus/hid/devices/$HID_ID"
+[ -e "$HID_PATH" ] || fail 'the selected device disconnected; run Action again.'
 
 if [ "$SUPPORTED" != yes ]; then
   fail "$NAME ($HID_ID) is not supported. This module currently supports Xbox Series Bluetooth VID:PID 045e:0b13 only."
 fi
 
-HID_PATH="/sys/bus/hid/devices/$HID_ID"
-[ -e "$HID_PATH" ] || fail 'the selected device disconnected; run Action again.'
 DRIVER=$(basename "$(readlink -f "$HID_PATH/driver" 2>/dev/null)")
 
 if [ "$DRIVER" = microsoft ]; then

@@ -27,7 +27,7 @@
 |---|---|
 | `module.prop` | Magisk 模块信息（id `xbox_bt_rumble_ff`） |
 | `action.sh` | Magisk Action 入口，转调 `select_controller.sh` |
-| `select_controller.sh` | 交互式选择设备并重新绑定到 `hid-microsoft` |
+| `select_controller.sh` | 音量键选择设备并重新绑定到 `hid-microsoft` |
 
 纯 shell，无需编译，无后台服务，无 sepolicy 规则。
 
@@ -43,13 +43,12 @@ adb shell su -c "magisk --install-module /data/local/tmp/xbox.zip"
 
 ## 使用
 
-Magisk → 模块 → Xbox Bluetooth Rumble Fix → 操作（Action），按提示输入列表中的设备编号。
+Magisk → 模块 → Xbox Bluetooth Rumble Fix → 操作（Action）：
 
-Action 需要交互式 stdin。如果 Magisk 的 Action 终端无法输入（部分机型如此），可以直接用 adb/root shell 运行：
-
-```sh
-adb shell su -c 'sh /data/adb/modules/xbox_bt_rumble_ff/select_controller.sh'
-```
+- 菜单会列出当前连接的所有蓝牙 HID 设备，标记是否受支持，并显示当前驱动
+- **音量+ = 下一项，音量- = 确认**（Magisk 的 Action 终端在本机不支持交互输入）
+- 选中受支持的 `045e:0b13` 后按音量-，脚本完成重新绑定并打印结果
+- 菜单 90 秒无操作自动退出；退出时会恢复菜单期间改变的媒体音量
 
 ## 注意
 
